@@ -58,7 +58,7 @@ func DecryptGCM(key, ciphertext []byte) ([]byte, error) {
 	}
 
 	ns := gcm.NonceSize()
-	if len(ciphertext) < ns {
+	if len(ciphertext) < ns+gcm.Overhead() {
 		return nil, errors.New("ciphertext too short")
 	}
 
@@ -70,4 +70,9 @@ func HMACSign(key, msg []byte, h func() hash.Hash) []byte {
 	mac := hmac.New(h, key)
 	mac.Write(msg)
 	return mac.Sum(nil)
+}
+
+func HMACVerify(key, msg, expectedSig []byte, h func() hash.Hash) bool {
+	actualSig := HMACSign(key, msg, h)
+	return subtle.ConstantTimeCompare(actualSig, expectedSig) == 1
 }

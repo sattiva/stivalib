@@ -1,6 +1,7 @@
 package ratelimit
 
 import (
+	"math"
 	"sync"
 	"time"
 )
@@ -11,6 +12,7 @@ type Limiter struct {
 	rate   float64
 	burst  float64
 	ttl    time.Duration
+	stopCh chan struct{}
 }
 
 type bucket struct {
@@ -20,10 +22,11 @@ type bucket struct {
 
 func New(rate, burst float64, ttl time.Duration) *Limiter {
 	l := &Limiter{
-		v:     make(map[string]*bucket),
-		rate:  rate,
-		burst: burst,
-		ttl:   ttl,
+		v:      make(map[string]*bucket),
+		rate:   rate,
+		burst:  burst,
+		ttl:    ttl,
+		stopCh: make(chan struct{}),
 	}
 	go l.cleanup()
 	return l
@@ -54,15 +57,27 @@ func (l *Limiter) Allow(key string) bool {
 	return false
 }
 
+func (l *Limiter) Close() {
+	close(l.stopCh)
+}
+
 func (l *Limiter) cleanup() {
-	for range time.Tick(l.ttl) {
-		l.mu.Lock()
-		now := time.Now()
-		for k, b := range l.v {
-			if now.Sub(b.last) > l.ttl {
-				delete(l.v, k)
+	ticker := time.NewTicker(l.ttl)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			l.mu.Lock()
+			now := time.Now()
+			for k, b := range l.v {
+				if now.Sub(b.last) > l.ttl || math.IsNaN(b.toks) {
+					delete(l.v, k)
+				}
 			}
+			l.mu.Unlock()
+		case <-l.stopCh:
+			return
 		}
-		l.mu.Unlock()
 	}
 }
