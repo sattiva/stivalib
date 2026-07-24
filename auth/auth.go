@@ -13,20 +13,25 @@ import (
 )
 
 type Claims struct {
-	Sub string `json:"sub"`
-	Exp int64  `json:"exp"`
-	Iat int64  `json:"iat"`
+	Sub  string `json:"sub"`
+	Exp  int64  `json:"exp"`
+	Iat  int64  `json:"iat"`
+	Nbf  int64  `json:"nbf"`
 	Role string `json:"role"`
 }
 
 func IssueJWT(key []byte, sub, role string, ttl time.Duration) (string, error) {
+	if len(key) < 32 {
+		return "", errors.New("key must be at least 32 bytes for HS256 security")
+	}
 	h := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
 	now := time.Now().Unix()
 	c, err := json.Marshal(Claims{
-		Sub: sub,
+		Sub:  sub,
 		Role: role,
-		Iat: now,
-		Exp: now + int64(ttl.Seconds()),
+		Iat:  now,
+		Nbf:  now,
+		Exp:  now + int64(ttl.Seconds()),
 	})
 	if err != nil {
 		return "", err
@@ -42,9 +47,29 @@ func IssueJWT(key []byte, sub, role string, ttl time.Duration) (string, error) {
 }
 
 func VerifyJWT(key []byte, token string) (*Claims, error) {
+	if len(key) < 32 {
+		return nil, errors.New("key must be at least 32 bytes")
+	}
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
 		return nil, errors.New("invalid jwt format")
+	}
+
+	hBuf, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return nil, errors.New("invalid header encoding")
+	}
+
+	var header struct {
+		Alg string `json:"alg"`
+		Typ string `json:"typ"`
+	}
+	if err := json.Unmarshal(hBuf, &header); err != nil {
+		return nil, errors.New("invalid header json")
+	}
+
+	if header.Alg != "HS256" {
+		return nil, errors.New("unsupported or algorithm confusion attack detected")
 	}
 
 	sigInput := fmt.Sprintf("%s.%s", parts[0], parts[1])
@@ -71,7 +96,11 @@ func VerifyJWT(key []byte, token string) (*Claims, error) {
 		return nil, errors.New("corrupt payload json")
 	}
 
-	if time.Now().Unix() > c.Exp {
+	now := time.Now().Unix()
+	if c.Nbf > 0 && now < c.Nbf {
+		return nil, errors.New("jwt token not valid yet")
+	}
+	if now > c.Exp {
 		return nil, errors.New("jwt token expired")
 	}
 
