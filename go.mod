@@ -1,4 +1,4 @@
-module sativas-lib
+module sativlib
 
 go 1.25.0
 
