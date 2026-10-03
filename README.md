@@ -1,7 +1,5 @@
 # sativlib (v5.5 Enterprise Security Engine)
 
-High-performance defensive security, cryptography, and systems core for Go. Designed to remove external dependencies while enforcing zero-trust architectural standards.
-
 ## Features & Capabilities
 
 - **AES-256-GCM Encryption (`crypto`)**: Authenticated symmetric encryption and decryption with nonce validation (`EncryptGCM`, `DecryptGCM`).
